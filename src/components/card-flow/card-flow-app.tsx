@@ -1020,16 +1020,60 @@ export function CardFlowApp() {
 
             <div className="flex flex-col items-start gap-3 lg:items-end">
               <StatusPill phase={phase} hasError={Boolean(errorMessage)} />
-              <button
-                type="button"
-                onClick={() => setDbView((current) => !current)}
-                className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-slate-200 transition hover:border-lime-200/40 hover:text-lime-100"
-              >
-                {dbView ? "Back to Capture" : `Shared Contacts (${contacts.length})`}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {contacts.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={saveSharedContactsToPhone}
+                    className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15"
+                    title="Downloads one .vcf file containing every saved contact for iPhone import"
+                  >
+                    Save All Saved to iPhone
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setDbView((current) => !current)}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-slate-200 transition hover:border-lime-200/40 hover:text-lime-100"
+                >
+                  {dbView ? "Back to Capture" : `Shared Contacts (${contacts.length})`}
+                </button>
+              </div>
             </div>
           </div>
         </header>
+
+        {!dbView && contacts.length > 0 ? (
+          <div className="mt-4 rounded-[28px] border border-cyan-300/20 bg-cyan-300/10 px-5 py-4 shadow-[0_18px_60px_rgba(8,145,178,0.12)] backdrop-blur">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.22em] text-cyan-100/80">
+                  iPhone Batch Export
+                </div>
+                <div className="mt-1 text-sm text-slate-100">
+                  {contacts.length} saved contact{contacts.length === 1 ? "" : "s"} ready to import
+                  into iPhone as one `.vcf` file.
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={saveSharedContactsToPhone}
+                  className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15"
+                >
+                  Save All Saved to iPhone
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDbView(true)}
+                  className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-slate-100 transition hover:border-lime-200/40 hover:text-lime-100"
+                >
+                  Open Shared Contacts
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-6 grid flex-1 gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
           <aside className="rounded-[32px] border border-white/10 bg-slate-950/55 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.22)] backdrop-blur sm:p-5">
@@ -1212,7 +1256,7 @@ export function CardFlowApp() {
                       className="rounded-full border border-white/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:text-slate-500"
                       title="Downloads one .vcf file containing every saved contact for iPhone import"
                     >
-                      Save All to Phone
+                      Save All Shared to Phone
                     </button>
                     <button
                       type="button"
@@ -1374,8 +1418,19 @@ export function CardFlowApp() {
                         className="rounded-full border border-white/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100 transition hover:border-cyan-200/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
                         title="Downloads a .vcf file — tap to add to iPhone Contacts"
                       >
-                        📲 Save to Phone
+                        📲 Save Selected to Phone
                       </button>
+                      {draftContacts.length > 1 ? (
+                        <button
+                          type="button"
+                          onClick={saveDraftsToPhone}
+                          disabled={working}
+                          className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                          title="Downloads one .vcf file containing the full detected batch for iPhone import"
+                        >
+                          📲 Save Batch to Phone
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => void generateFollowUps()}
@@ -1407,7 +1462,7 @@ export function CardFlowApp() {
                             className="rounded-full border border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
                             title="Downloads one .vcf file containing the full detected batch for iPhone import"
                           >
-                            Save All to Phone
+                            Save Batch to Phone
                           </button>
                           <button
                             type="button"
