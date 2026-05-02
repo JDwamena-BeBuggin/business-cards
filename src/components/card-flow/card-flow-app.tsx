@@ -197,7 +197,47 @@ function buildVCard(contact: CardFlowContact): string {
   return `${lines.join("\r\n")}\r\n`;
 }
 
+function toBase64Url(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function buildInlineVCardUrl(contents: string, filename: string) {
+  const params = new URLSearchParams({
+    filename,
+    data: toBase64Url(contents),
+  });
+
+  return `/api/card-flow/vcard?${params.toString()}`;
+}
+
+function isAppleMobileDevice() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  return /iPad|iPhone|iPod/i.test(navigator.userAgent);
+}
+
 async function handoffVCardFile(contents: string, filename: string) {
+  const inlineUrl = buildInlineVCardUrl(contents, filename);
+
+  if (typeof window !== "undefined" && isAppleMobileDevice()) {
+    const opened = window.open(inlineUrl, "_blank", "noopener,noreferrer");
+
+    if (!opened) {
+      window.location.href = inlineUrl;
+    }
+
+    return "opened";
+  }
+
   const file = new File([contents], filename, {
     type: "text/vcard;charset=utf-8",
   });
@@ -220,14 +260,15 @@ async function handoffVCardFile(contents: string, filename: string) {
     }
   }
 
-  const blob = new Blob([contents], { type: "text/vcard;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return "downloaded";
+  if (typeof window !== "undefined") {
+    const opened = window.open(inlineUrl, "_blank", "noopener,noreferrer");
+
+    if (!opened) {
+      window.location.href = inlineUrl;
+    }
+  }
+
+  return "opened";
 }
 
 async function downloadVCard(contact: CardFlowContact) {
@@ -1013,12 +1054,12 @@ export function CardFlowApp() {
       selectedDraftIndex >= 0 ? draftContacts[selectedDraftIndex + 1] || null : null;
     const result = await downloadVCard(stripDraftMetadata(selectedDraft));
 
-    if (result === "shared" || result === "downloaded") {
+    if (result === "shared" || result === "opened") {
       const advanced = advanceToNextDraft(selectedDraft.draft_id);
       addLog(
         advanced
-          ? `Prepared ${contactDisplayName(selectedDraft)} for phone import and moved to ${contactDisplayName(upcomingDraft!)}.`
-          : `Prepared ${contactDisplayName(selectedDraft)} for phone import. You’re at the end of this batch.`
+          ? `Opened ${contactDisplayName(selectedDraft)} as a contact card and moved to ${contactDisplayName(upcomingDraft!)}.`
+          : `Opened ${contactDisplayName(selectedDraft)} as a contact card. You’re at the end of this batch.`
       );
       return;
     }
@@ -1447,9 +1488,9 @@ export function CardFlowApp() {
                                     type="button"
                                     onClick={() => void downloadVCard(entry)}
                                     className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-400 transition hover:border-cyan-400/30 hover:text-cyan-100"
-                                    title="Download .vcf to add to phone contacts"
+                                    title="Open a contact card that iPhone can import"
                                   >
-                                    📲
+                                    Card
                                   </button>
                                   <button
                                     type="button"
@@ -1538,9 +1579,9 @@ export function CardFlowApp() {
                         onClick={() => void saveSelectedDraftToPhone()}
                         disabled={working}
                         className="rounded-full border border-white/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100 transition hover:border-cyan-200/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        title="Downloads a .vcf file for this contact and opens the next detected contact automatically"
+                        title="Opens a contact card for this person and then advances to the next detected contact"
                       >
-                        📲 {draftContacts.length > 1 ? "Save to Phone + Next" : "Save to Phone"}
+                        👤 {draftContacts.length > 1 ? "Open Contact Card + Next" : "Open Contact Card"}
                       </button>
                       <button
                         type="button"
