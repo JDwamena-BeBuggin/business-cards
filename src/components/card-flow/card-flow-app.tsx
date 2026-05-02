@@ -167,6 +167,29 @@ function downloadVCard(contact: CardFlowContact) {
   URL.revokeObjectURL(url);
 }
 
+function downloadVCardBatch(contacts: CardFlowContact[], filename = "card-flow-contacts") {
+  const cards = contacts
+    .map(hydrateContact)
+    .filter((contact) =>
+      [contact.first_name, contact.last_name, contact.company, contact.email, formatPhoneSummary(contact)]
+        .some(Boolean)
+    )
+    .map(buildVCard);
+
+  if (!cards.length) {
+    return false;
+  }
+
+  const blob = new Blob([cards.join("\r\n")], { type: "text/vcard;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filename}.vcf`;
+  link.click();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
 function stripDraftMetadata(contact: DraftContact): CardFlowContact {
   const { draft_id, ...rest } = contact;
   void draft_id;
@@ -751,6 +774,25 @@ export function CardFlowApp() {
     }
   }
 
+  function saveDraftsToPhone() {
+    const toExport = draftContacts.map(stripDraftMetadata);
+    if (!toExport.length) return;
+
+    const downloaded = downloadVCardBatch(
+      toExport,
+      `card-flow-phone-import-${new Date().toISOString().split("T")[0]}`
+    );
+
+    if (downloaded) {
+      addLog(
+        `Downloaded ${toExport.length} contact${toExport.length === 1 ? "" : "s"} as one iPhone import file.`
+      );
+    } else {
+      setErrorMessage("No contact details were available to export to phone.");
+      addLog("Phone export skipped because no usable contact details were found.");
+    }
+  }
+
   async function extractContacts() {
     if (manualMode && !manualText.trim()) {
       setErrorMessage("Paste the card text before extracting.");
@@ -867,6 +909,24 @@ export function CardFlowApp() {
       const message = error instanceof Error ? error.message : "Export failed.";
       setErrorMessage(message);
       addLog(`Export failed: ${message}`);
+    }
+  }
+
+  function saveSharedContactsToPhone() {
+    if (!contacts.length) return;
+
+    const downloaded = downloadVCardBatch(
+      contacts,
+      `shared-contacts-phone-import-${new Date().toISOString().split("T")[0]}`
+    );
+
+    if (downloaded) {
+      addLog(
+        `Downloaded ${contacts.length} shared contact${contacts.length === 1 ? "" : "s"} as one iPhone import file.`
+      );
+    } else {
+      setErrorMessage("No saved contacts were available to export to phone.");
+      addLog("Shared phone export skipped because no usable contacts were found.");
     }
   }
 
@@ -1147,6 +1207,15 @@ export function CardFlowApp() {
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
+                      onClick={saveSharedContactsToPhone}
+                      disabled={!contacts.length}
+                      className="rounded-full border border-white/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:text-slate-500"
+                      title="Downloads one .vcf file containing every saved contact for iPhone import"
+                    >
+                      Save All to Phone
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void exportContacts()}
                       disabled={!contacts.length}
                       className="rounded-full bg-lime-300 px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-lime-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
@@ -1331,6 +1400,14 @@ export function CardFlowApp() {
                             className="rounded-full border border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-slate-300 transition hover:border-lime-200/30 hover:text-lime-100"
                           >
                             Save All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={saveDraftsToPhone}
+                            className="rounded-full border border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
+                            title="Downloads one .vcf file containing the full detected batch for iPhone import"
+                          >
+                            Save All to Phone
                           </button>
                           <button
                             type="button"
