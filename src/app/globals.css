@@ -49,38 +49,40 @@
 }
 
 :root {
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
+  --font-sans: "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  --font-geist-mono: "SFMono-Regular", Menlo, Monaco, "Courier New", monospace;
+  --card: rgba(251, 252, 255, 0.96);
+  --card-foreground: #12263a;
+  --popover: rgba(255, 255, 255, 0.98);
+  --popover-foreground: #12263a;
+  --primary: #173f5f;
+  --primary-foreground: #ffffff;
+  --secondary: #eff5fa;
+  --secondary-foreground: #173f5f;
+  --muted: #eff5fa;
+  --muted-foreground: #54708a;
+  --accent: #f3b562;
+  --accent-foreground: #12263a;
+  --destructive: #d35d48;
+  --border: rgba(65, 92, 120, 0.16);
+  --input: rgba(65, 92, 120, 0.16);
+  --ring: rgba(42, 103, 143, 0.35);
+  --chart-1: #173f5f;
+  --chart-2: #2a678f;
+  --chart-3: #2d8f6f;
+  --chart-4: #f3b562;
+  --chart-5: #54708a;
+  --radius: 1rem;
+  --sidebar: rgba(251, 252, 255, 0.96);
+  --sidebar-foreground: #12263a;
+  --sidebar-primary: #173f5f;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #eff5fa;
+  --sidebar-accent-foreground: #12263a;
+  --sidebar-border: rgba(65, 92, 120, 0.16);
+  --sidebar-ring: rgba(42, 103, 143, 0.35);
+  --background: #f7fafc;
+  --foreground: #12263a;
 }
 
 .dark {
@@ -123,6 +125,7 @@
   }
   body {
     @apply bg-background text-foreground;
+    min-height: 100vh;
   }
   html {
     @apply font-sans;
