@@ -48,6 +48,11 @@ export const DB_COLS = [
   "date_met",
   "event",
   "notes",
+  "follow_up_email_subject",
+  "follow_up_email_body",
+  "follow_up_linkedin_msg",
+  "follow_up_crm_note",
+  "follow_up_task",
   "follow_up_status",
   "added_at",
 ] as const;
@@ -84,6 +89,11 @@ export const cardFlowContactRecordSchema = contactExtractionSchema
     source: z.string().default("Business Card"),
     date_met: z.string().default(""),
     event: z.string().default(""),
+    follow_up_email_subject: z.string().default(""),
+    follow_up_email_body: z.string().default(""),
+    follow_up_linkedin_msg: z.string().default(""),
+    follow_up_crm_note: z.string().default(""),
+    follow_up_task: z.string().default(""),
     follow_up_status: z.string().default("Needed"),
     added_at: z.string().optional(),
   })

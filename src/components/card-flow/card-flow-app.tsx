@@ -36,6 +36,24 @@ type StoredContact = CardFlowContact & {
   tags: CardFlowTag[];
 };
 
+type NotificationInfo =
+  | { sent: true; messageId: string }
+  | { sent: false; reason: string }
+  | null;
+
+type SaveContactResponse = {
+  saved: StoredContact;
+  wasNew: boolean;
+  notification: NotificationInfo;
+};
+
+type SaveContactsBatchResponse = {
+  saved: StoredContact[];
+  newlyAdded: StoredContact[];
+  updated: StoredContact[];
+  notification: NotificationInfo;
+};
+
 const OUTPUT_TABS: Array<{ id: OutputTab; label: string }> = [
   { id: "email", label: "Email" },
   { id: "linkedin", label: "LinkedIn" },
@@ -64,6 +82,11 @@ const EMPTY_CONTACT: CardFlowContact = {
   source: "Business Card",
   date_met: new Date().toISOString().split("T")[0],
   event: "",
+  follow_up_email_subject: "",
+  follow_up_email_body: "",
+  follow_up_linkedin_msg: "",
+  follow_up_crm_note: "",
+  follow_up_task: "",
   follow_up_status: "Needed",
 };
 
@@ -127,6 +150,20 @@ function createDraftContact(
     notes: combinedNotes,
     draft_id: generateId(),
     tags: hydrated.tags as CardFlowTag[],
+  };
+}
+
+function followUpOutputToContactFields(output?: FollowUpOutput) {
+  if (!output) {
+    return {};
+  }
+
+  return {
+    follow_up_email_subject: output.email_subject,
+    follow_up_email_body: output.email_body,
+    follow_up_linkedin_msg: output.linkedin_msg,
+    follow_up_crm_note: output.crm_note,
+    follow_up_task: output.task,
   };
 }
 
@@ -706,32 +743,59 @@ export function CardFlowApp() {
     setErrorMessage("");
   }
 
-  async function saveDraftContact(draftContact: DraftContact) {
+  function mergeSavedContactsIntoState(savedContacts: StoredContact[]) {
+    setContacts((current) => {
+      const next = [...current];
+
+      savedContacts.forEach((savedContact) => {
+        const hydrated = hydrateStoredContact(savedContact);
+        const existingIndex = next.findIndex((entry) => entry.id === hydrated.id);
+        if (existingIndex === -1) {
+          next.unshift(hydrated);
+        } else {
+          next[existingIndex] = hydrated;
+        }
+      });
+
+      return next;
+    });
+  }
+
+  function logNotificationResult(notification: NotificationInfo) {
+    if (!notification) return;
+
+    if (notification.sent) {
+      addLog("Sent the new-contact notification email.");
+      return;
+    }
+
+    if (notification.reason === "No new contacts to notify.") {
+      return;
+    }
+
+    addLog(`Notification email skipped: ${notification.reason}`);
+  }
+
+  async function saveDraftContact(
+    draftContact: DraftContact,
+    followUpOutput?: FollowUpOutput
+  ) {
     const persistable = stripDraftMetadata(draftContact);
     const duplicateIndex = findDuplicateIndex(contacts, persistable);
     const existing = duplicateIndex === -1 ? null : contacts[duplicateIndex];
     const payload = hydrateStoredContact({
       ...persistable,
+      ...followUpOutputToContactFields(followUpOutput),
       id: existing?.id || generateId(),
       added_at: existing?.added_at || new Date().toISOString(),
       tags: persistable.tags as CardFlowTag[],
     });
 
-    const saved = await postJson<StoredContact>("/api/card-flow/contacts", payload);
+    const response = await postJson<SaveContactResponse>("/api/card-flow/contacts", payload);
+    mergeSavedContactsIntoState([response.saved]);
+    logNotificationResult(response.notification);
 
-    setContacts((current) => {
-      const hydrated = hydrateStoredContact(saved);
-      const savedIndex = current.findIndex((entry) => entry.id === hydrated.id);
-      if (savedIndex === -1) {
-        return [hydrated, ...current];
-      }
-
-      const next = [...current];
-      next[savedIndex] = hydrated;
-      return next;
-    });
-
-    if (duplicateIndex === -1) {
+    if (response.wasNew) {
       addLog(`Saved ${contactDisplayName(draftContact)} to the shared contacts database.`);
     } else {
       addLog(`Updated the shared record for ${contactDisplayName(draftContact)}.`);
@@ -742,7 +806,7 @@ export function CardFlowApp() {
     if (!selectedDraft) return;
 
     try {
-      await saveDraftContact(selectedDraft);
+      await saveDraftContact(selectedDraft, selectedOutput || undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save contact.";
       setErrorMessage(message);
@@ -754,11 +818,27 @@ export function CardFlowApp() {
     if (!draftContacts.length) return;
 
     try {
-      for (const draft of draftContacts) {
-        await saveDraftContact(draft);
-      }
+      const payload = draftContacts.map((draft) => {
+        const persistable = stripDraftMetadata(draft);
+        const duplicateIndex = findDuplicateIndex(contacts, persistable);
+        const existing = duplicateIndex === -1 ? null : contacts[duplicateIndex];
+        return hydrateStoredContact({
+          ...persistable,
+          ...followUpOutputToContactFields(followUpsByDraftId[draft.draft_id]),
+          id: existing?.id || generateId(),
+          added_at: existing?.added_at || new Date().toISOString(),
+          tags: persistable.tags as CardFlowTag[],
+        });
+      });
+
+      const response = await postJson<SaveContactsBatchResponse>("/api/card-flow/contacts", {
+        contacts: payload,
+      });
+
+      mergeSavedContactsIntoState(response.saved);
+      logNotificationResult(response.notification);
       addLog(
-        `Saved all ${draftContacts.length} contact${draftContacts.length === 1 ? "" : "s"} to the shared database.`
+        `Saved ${response.saved.length} contact${response.saved.length === 1 ? "" : "s"} to the shared database.`
       );
     } catch (error) {
       const message =
@@ -891,7 +971,7 @@ export function CardFlowApp() {
         contact: persistable,
       });
 
-      await saveDraftContact(selectedDraft);
+      await saveDraftContact(selectedDraft, generated);
       setFollowUpsByDraftId((current) => ({
         ...current,
         [selectedDraft.draft_id]: generated,

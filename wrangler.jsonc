@@ -15,10 +15,18 @@
       "database_id": "f5c43183-1cbf-4791-9a9b-704948737a06"
     }
   ],
+  "send_email": [
+    {
+      "name": "EMAIL"
+    }
+  ],
   "observability": {
     "enabled": true
   },
   "vars": {
-    "NEXTJS_ENV": "production"
+    "NEXTJS_ENV": "production",
+    "EMAIL_NOTIFICATION_TO": "josh.dwamena@rockwool.com",
+    "EMAIL_REPLY_TO": "joshdwamena@gmail.com",
+    "EMAIL_FROM_NAME": "Card Flow"
   }
 }

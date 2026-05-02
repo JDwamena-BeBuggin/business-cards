@@ -4,10 +4,8 @@ Business card capture, multi-contact extraction, follow-up drafting, and XLSX ex
 
 ## Shared Database
 
-- Local development uses a file-backed database automatically at `./data/business-cards.db`.
-- For a real central contacts database shared by desktop and phone after deployment, set:
-  - `TURSO_DATABASE_URL`
-  - `TURSO_AUTH_TOKEN`
+- Local development uses the JSON fallback at `./data/business-cards.json`.
+- Production uses the Cloudflare D1 binding configured in `wrangler.jsonc`.
 - Also set `OPENAI_API_KEY` for extraction and follow-up generation.
 - Copy `.env.example` to `.env.local` for local development and `.dev.vars.example` to `.dev.vars` for Worker preview.
 
@@ -16,22 +14,31 @@ Business card capture, multi-contact extraction, follow-up drafting, and XLSX ex
 - This app is now configured for Cloudflare Workers using `@opennextjs/cloudflare`.
 - Worker config lives in `wrangler.jsonc`.
 - The deployed Worker name is set to `business-card-app`, which matches the target `workers.dev` URL.
+- Shared contacts currently persist in the `business-cards-contacts` D1 database binding.
 
 ### Required Cloudflare secrets
 
 Add these in the Cloudflare Worker settings or with `wrangler secret put`:
 
 - `OPENAI_API_KEY`
-- `TURSO_DATABASE_URL`
-- `TURSO_AUTH_TOKEN`
+- `EMAIL_FROM`
 
 Example:
 
 ```bash
 wrangler secret put OPENAI_API_KEY
-wrangler secret put TURSO_DATABASE_URL
-wrangler secret put TURSO_AUTH_TOKEN
+wrangler secret put EMAIL_FROM
 ```
+
+### Email notifications
+
+- New contacts can trigger an email notification with:
+  - a summary of only the newly added contacts
+  - the latest XLSX contacts database attached
+- Duplicates or updates do not trigger the notification email.
+- `EMAIL_NOTIFICATION_TO`, `EMAIL_REPLY_TO`, and `EMAIL_FROM_NAME` are already wired as Worker vars.
+- `EMAIL_FROM` must be a verified sender address on a Cloudflare Email Service domain.
+- `joshdwamena@gmail.com` can be used as `EMAIL_REPLY_TO`, but Cloudflare Email Service cannot send mail directly *from* a Gmail address.
 
 ### Local Worker preview
 
