@@ -110,17 +110,61 @@ function hydrateStoredContact(contact: Partial<StoredContact>): StoredContact {
 
 function createDraftContact(
   extracted: ContactExtraction,
-  source: CardFlowContact["source"]
+  source: CardFlowContact["source"],
+  batch: { event: string; dateMet: string; notes: string }
 ): DraftContact {
   const hydrated = hydrateContact(extracted);
+  const combinedNotes =
+    batch.notes && hydrated.notes
+      ? `${batch.notes}\n${hydrated.notes}`
+      : batch.notes || hydrated.notes;
   return {
     ...hydrated,
     source,
     follow_up_status: "Needed",
-    date_met: new Date().toISOString().split("T")[0],
+    date_met: batch.dateMet || new Date().toISOString().split("T")[0],
+    event: batch.event || hydrated.event,
+    notes: combinedNotes,
     draft_id: generateId(),
     tags: hydrated.tags as CardFlowTag[],
   };
+}
+
+function buildVCard(contact: CardFlowContact): string {
+  const esc = (s: string) =>
+    s.replace(/\\/g, "\\\\").replace(/,/g, "\\,").replace(/;/g, "\\;").replace(/\n/g, "\\n");
+  const lines = [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    `N:${esc(contact.last_name)};${esc(contact.first_name)};;;`,
+    `FN:${esc([contact.first_name, contact.last_name].filter(Boolean).join(" "))}`,
+  ];
+  if (contact.company) lines.push(`ORG:${esc(contact.company)}`);
+  if (contact.title) lines.push(`TITLE:${esc(contact.title)}`);
+  if (contact.email) lines.push(`EMAIL;type=INTERNET;type=WORK:${contact.email}`);
+  if (contact.cell_phone) lines.push(`TEL;type=CELL:${contact.cell_phone}`);
+  if (contact.office_phone) lines.push(`TEL;type=WORK:${contact.office_phone}`);
+  if (contact.phone) lines.push(`TEL;type=VOICE:${contact.phone}`);
+  if (contact.fax_phone) lines.push(`TEL;type=FAX:${contact.fax_phone}`);
+  if (contact.other_phone) lines.push(`TEL;type=OTHER:${contact.other_phone}`);
+  if (contact.website) lines.push(`URL:${contact.website}`);
+  if (contact.linkedin) lines.push(`X-SOCIALPROFILE;type=linkedin:${contact.linkedin}`);
+  if (contact.address) lines.push(`ADR;type=WORK:;;${esc(contact.address)};;;;`);
+  if (contact.notes) lines.push(`NOTE:${esc(contact.notes)}`);
+  lines.push("END:VCARD");
+  return lines.join("\r\n");
+}
+
+function downloadVCard(contact: CardFlowContact) {
+  const vcf = buildVCard(contact);
+  const blob = new Blob([vcf], { type: "text/vcard;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  const name = [contact.first_name, contact.last_name].filter(Boolean).join("_") || "contact";
+  link.download = `${name}.vcf`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function stripDraftMetadata(contact: DraftContact): CardFlowContact {
@@ -478,6 +522,9 @@ export function CardFlowApp() {
   const [manualText, setManualText] = useState("");
   const [images, setImages] = useState<ImageState[]>([]);
   const [imagesProcessing, setImagesProcessing] = useState(false);
+  const [batchEvent, setBatchEvent] = useState("");
+  const [batchDateMet, setBatchDateMet] = useState(new Date().toISOString().split("T")[0]);
+  const [batchNotes, setBatchNotes] = useState("");
   const [draftContacts, setDraftContacts] = useState<DraftContact[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [followUpsByDraftId, setFollowUpsByDraftId] = useState<
@@ -734,7 +781,11 @@ export function CardFlowApp() {
       );
 
       const extractedDrafts = extractedBatch.contacts.map((contact) =>
-        createDraftContact(contact, manualMode ? "Manual Entry" : "Business Card")
+        createDraftContact(contact, manualMode ? "Manual Entry" : "Business Card", {
+          event: batchEvent,
+          dateMet: batchDateMet,
+          notes: batchNotes,
+        })
       );
 
       setDraftContacts(extractedDrafts);
@@ -983,6 +1034,48 @@ export function CardFlowApp() {
                 </p>
               ) : null}
 
+              {/* Batch Settings */}
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4 space-y-3">
+                <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">
+                  Batch Settings — applied to all contacts
+                </div>
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    Event Name
+                  </span>
+                  <input
+                    type="text"
+                    value={batchEvent}
+                    onChange={(e) => setBatchEvent(e.target.value)}
+                    placeholder="e.g. CSC Conference 2026"
+                    className="w-full rounded-[18px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-lime-200/40 focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    Date Met
+                  </span>
+                  <input
+                    type="date"
+                    value={batchDateMet}
+                    onChange={(e) => setBatchDateMet(e.target.value)}
+                    className="w-full rounded-[18px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 focus:border-lime-200/40 focus:outline-none"
+                  />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                    Shared Notes
+                  </span>
+                  <textarea
+                    value={batchNotes}
+                    onChange={(e) => setBatchNotes(e.target.value)}
+                    rows={2}
+                    placeholder="e.g. Met at booth 42, interested in Type A insulation"
+                    className="w-full resize-none rounded-[18px] border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-100 placeholder:text-slate-500 focus:border-lime-200/40 focus:outline-none"
+                  />
+                </label>
+              </div>
+
               {errorMessage ? (
                 <div className="rounded-[24px] border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
                   {errorMessage}
@@ -1130,13 +1223,23 @@ export function CardFlowApp() {
                                   : "—"}
                               </td>
                               <td className="px-4 py-4">
-                                <button
-                                  type="button"
-                                  onClick={() => void deleteSavedContact(entry)}
-                                  className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-400 transition hover:border-rose-400/30 hover:text-rose-100"
-                                >
-                                  Delete
-                                </button>
+                                <div className="flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => downloadVCard(entry)}
+                                    className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-400 transition hover:border-cyan-400/30 hover:text-cyan-100"
+                                    title="Download .vcf to add to phone contacts"
+                                  >
+                                    📲
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => void deleteSavedContact(entry)}
+                                    className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-400 transition hover:border-rose-400/30 hover:text-rose-100"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1194,6 +1297,15 @@ export function CardFlowApp() {
                         className="rounded-full border border-white/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100 transition hover:border-lime-200/40 hover:text-lime-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Save Contact
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadVCard(stripDraftMetadata(selectedDraft))}
+                        disabled={working}
+                        className="rounded-full border border-white/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100 transition hover:border-cyan-200/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        title="Downloads a .vcf file — tap to add to iPhone Contacts"
+                      >
+                        📲 Save to Phone
                       </button>
                       <button
                         type="button"
