@@ -1,4 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+## Card Flow
+
+Business card capture, multi-contact extraction, follow-up drafting, and XLSX export in a Next.js app that works on desktop and phone.
+
+## Shared Database
+
+- Local development uses a file-backed database automatically at `./data/business-cards.db`.
+- For a real central contacts database shared by desktop and phone after deployment, set:
+  - `TURSO_DATABASE_URL`
+  - `TURSO_AUTH_TOKEN`
+- Also set `OPENAI_API_KEY` for extraction and follow-up generation.
+- Copy `.env.example` to `.env.local` for local development and `.dev.vars.example` to `.dev.vars` for Worker preview.
+
+## Cloudflare Workers
+
+- This app is now configured for Cloudflare Workers using `@opennextjs/cloudflare`.
+- Worker config lives in `wrangler.jsonc`.
+- The deployed Worker name is set to `business-card-app`, which matches the target `workers.dev` URL.
+
+### Required Cloudflare secrets
+
+Add these in the Cloudflare Worker settings or with `wrangler secret put`:
+
+- `OPENAI_API_KEY`
+- `TURSO_DATABASE_URL`
+- `TURSO_AUTH_TOKEN`
+
+Example:
+
+```bash
+wrangler secret put OPENAI_API_KEY
+wrangler secret put TURSO_DATABASE_URL
+wrangler secret put TURSO_AUTH_TOKEN
+```
+
+### Local Worker preview
+
+```bash
+cp .dev.vars.example .dev.vars
+npm run preview
+```
+
+### Deploy
+
+```bash
+npm run deploy
+```
+
+If Cloudflare Git integration is connected to this repo and branch, pushing to GitHub can then trigger automatic rebuilds of the Worker.
 
 ## Getting Started
 

@@ -1,9 +1,8 @@
 "use client";
 
 import NextImage from "next/image";
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useRef, useState, useCallback } from "react";
 import {
-  CARD_FLOW_STORAGE_KEY,
   contactDisplayName,
   formatPhoneSummary,
   normalizeTags,
@@ -33,6 +32,7 @@ type DraftContact = CardFlowContact & {
 type StoredContact = CardFlowContact & {
   id: string;
   added_at: string;
+  updated_at?: string;
   tags: CardFlowTag[];
 };
 
@@ -103,6 +103,7 @@ function hydrateStoredContact(contact: Partial<StoredContact>): StoredContact {
     ...hydrated,
     id: contact.id || generateId(),
     added_at: contact.added_at || new Date().toISOString(),
+    updated_at: contact.updated_at,
     tags: hydrated.tags as CardFlowTag[],
   };
 }
@@ -196,13 +197,31 @@ async function processImage(file: File, maxDim = 1568, quality = 0.84) {
   } satisfies ImageState;
 }
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
+async function postJson<T>(url: string, body: unknown, method = "POST"): Promise<T> {
   const response = await fetch(url, {
-    method: "POST",
+    method,
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(body),
+    body: method === "GET" ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+  } & T;
+
+  if (!response.ok) {
+    throw new Error(payload.error || "Request failed.");
+  }
+
+  return payload;
+}
+
+async function getJson<T>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    method: "GET",
+    cache: "no-store",
   });
 
   const payload = (await response.json().catch(() => ({}))) as {
@@ -293,16 +312,15 @@ function MultiImageZone({
   onSelect,
   onRemove,
   onClearAll,
-  capture,
 }: {
   images: ImageState[];
   processing: boolean;
   onSelect: (files: File[]) => void;
   onRemove: (index: number) => void;
   onClearAll: () => void;
-  capture?: "user" | "environment";
 }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   return (
     <div className="space-y-3">
@@ -323,11 +341,11 @@ function MultiImageZone({
       <div
         role="button"
         tabIndex={0}
-        onClick={() => inputRef.current?.click()}
+        onClick={() => libraryInputRef.current?.click()}
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            inputRef.current?.click();
+            libraryInputRef.current?.click();
           }
         }}
         onDrop={(event) => {
@@ -354,14 +372,45 @@ function MultiImageZone({
           </>
         )}
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => cameraInputRef.current?.click()}
+          className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-4 text-sm font-medium text-slate-100 transition active:bg-white/10 hover:border-lime-200/40 hover:text-lime-100"
+        >
+          📸 Take Photo
+        </button>
+        <button
+          type="button"
+          onClick={() => libraryInputRef.current?.click()}
+          className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-4 text-sm font-medium text-slate-100 transition active:bg-white/10 hover:border-lime-200/40 hover:text-lime-100"
+        >
+          🖼 Choose Photos
+        </button>
+      </div>
+      {/* Library input — multiple files, no capture so gallery opens on mobile */}
       <input
-        ref={inputRef}
+        ref={libraryInputRef}
         type="file"
         accept="image/*"
-        capture={capture}
         multiple
         className="hidden"
-        onChange={(event) => onSelect(Array.from(event.target.files || []))}
+        onChange={(event) => {
+          onSelect(Array.from(event.target.files || []));
+          event.target.value = "";
+        }}
+      />
+      {/* Camera input — capture without multiple; iOS drops multiple when capture is set */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => {
+          onSelect(Array.from(event.target.files || []));
+          event.target.value = "";
+        }}
       />
 
       {images.length ? (
@@ -436,7 +485,6 @@ export function CardFlowApp() {
   >({});
   const [activeTab, setActiveTab] = useState<OutputTab>("email");
   const [contacts, setContacts] = useState<StoredContact[]>([]);
-  const [dbLoaded, setDbLoaded] = useState(false);
   const [dbView, setDbView] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [log, setLog] = useState<string[]>([]);
@@ -450,30 +498,30 @@ export function CardFlowApp() {
     });
   };
 
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(CARD_FLOW_STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<StoredContact>[];
-        if (Array.isArray(parsed)) {
-          const hydrated = parsed.map(hydrateStoredContact);
-          setContacts(hydrated);
-          addLog(
-            `Loaded ${hydrated.length} saved contact${hydrated.length === 1 ? "" : "s"} from this device.`
-          );
-        }
-      }
-    } catch {
-      addLog("Could not read saved contacts from this browser.");
-    } finally {
-      setDbLoaded(true);
+  const reloadContacts = useCallback(async (logMessage?: string) => {
+    const payload = await getJson<StoredContact[]>("/api/card-flow/contacts");
+    const hydrated = payload.map(hydrateStoredContact);
+    setContacts(hydrated);
+    if (logMessage) {
+      addLog(logMessage.replace("{count}", String(hydrated.length)));
     }
   }, []);
 
   useEffect(() => {
-    if (!dbLoaded) return;
-    window.localStorage.setItem(CARD_FLOW_STORAGE_KEY, JSON.stringify(contacts));
-  }, [contacts, dbLoaded]);
+    void (async () => {
+      try {
+        await reloadContacts(
+          "Loaded {count} shared contact records from the central database."
+        );
+      } catch (error) {
+        addLog(
+          error instanceof Error
+            ? `Could not load shared contacts: ${error.message}`
+            : "Could not load shared contacts."
+        );
+      }
+    })();
+  }, [reloadContacts]);
 
   const selectedDraft =
     draftContacts.find((contact) => contact.draft_id === selectedDraftId) || null;
@@ -561,53 +609,66 @@ export function CardFlowApp() {
     setErrorMessage("");
   }
 
-  function saveDraftContact(draftContact: DraftContact) {
+  async function saveDraftContact(draftContact: DraftContact) {
     const persistable = stripDraftMetadata(draftContact);
     const duplicateIndex = findDuplicateIndex(contacts, persistable);
+    const existing = duplicateIndex === -1 ? null : contacts[duplicateIndex];
+    const payload = hydrateStoredContact({
+      ...persistable,
+      id: existing?.id || generateId(),
+      added_at: existing?.added_at || new Date().toISOString(),
+      tags: persistable.tags as CardFlowTag[],
+    });
+
+    const saved = await postJson<StoredContact>("/api/card-flow/contacts", payload);
 
     setContacts((current) => {
-      const freshDuplicateIndex = findDuplicateIndex(current, persistable);
-
-      if (freshDuplicateIndex === -1) {
-        return [
-          {
-            ...persistable,
-            id: generateId(),
-            added_at: new Date().toISOString(),
-            tags: persistable.tags as CardFlowTag[],
-          },
-          ...current,
-        ];
+      const hydrated = hydrateStoredContact(saved);
+      const savedIndex = current.findIndex((entry) => entry.id === hydrated.id);
+      if (savedIndex === -1) {
+        return [hydrated, ...current];
       }
 
-      const existing = current[freshDuplicateIndex];
       const next = [...current];
-      next[freshDuplicateIndex] = {
-        ...existing,
-        ...persistable,
-        id: existing.id,
-        added_at: existing.added_at,
-        tags: persistable.tags as CardFlowTag[],
-      };
+      next[savedIndex] = hydrated;
       return next;
     });
 
     if (duplicateIndex === -1) {
-      addLog(`Saved ${contactDisplayName(draftContact)} to this device.`);
+      addLog(`Saved ${contactDisplayName(draftContact)} to the shared contacts database.`);
     } else {
-      addLog(`Updated the saved record for ${contactDisplayName(draftContact)}.`);
+      addLog(`Updated the shared record for ${contactDisplayName(draftContact)}.`);
     }
   }
 
-  function saveCurrentContact() {
+  async function saveCurrentContact() {
     if (!selectedDraft) return;
-    saveDraftContact(selectedDraft);
+
+    try {
+      await saveDraftContact(selectedDraft);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to save contact.";
+      setErrorMessage(message);
+      addLog(`Save failed: ${message}`);
+    }
   }
 
-  function saveAllDraftContacts() {
+  async function saveAllDraftContacts() {
     if (!draftContacts.length) return;
-    draftContacts.forEach((draft) => saveDraftContact(draft));
-    addLog(`Saved all ${draftContacts.length} contact${draftContacts.length === 1 ? "" : "s"} to this device.`);
+
+    try {
+      for (const draft of draftContacts) {
+        await saveDraftContact(draft);
+      }
+      addLog(
+        `Saved all ${draftContacts.length} contact${draftContacts.length === 1 ? "" : "s"} to the shared database.`
+      );
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to save all contacts.";
+      setErrorMessage(message);
+      addLog(`Bulk save failed: ${message}`);
+    }
   }
 
   async function exportDraftsToXlsx() {
@@ -683,8 +744,7 @@ export function CardFlowApp() {
         `Detected ${extractedDrafts.length} contact${extractedDrafts.length === 1 ? "" : "s"} from the current upload set.`
       );
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Extraction failed.";
+      const message = error instanceof Error ? error.message : "Extraction failed.";
       setErrorMessage(message);
       setPhase("upload");
       addLog(`Extraction failed: ${message}`);
@@ -705,7 +765,7 @@ export function CardFlowApp() {
         contact: persistable,
       });
 
-      saveDraftContact(selectedDraft);
+      await saveDraftContact(selectedDraft);
       setFollowUpsByDraftId((current) => ({
         ...current,
         [selectedDraft.draft_id]: generated,
@@ -759,6 +819,46 @@ export function CardFlowApp() {
     }
   }
 
+  async function deleteSavedContact(contact: StoredContact) {
+    try {
+      await fetch(`/api/card-flow/contacts?id=${encodeURIComponent(contact.id)}`, {
+        method: "DELETE",
+      });
+      setContacts((current) => current.filter((row) => row.id !== contact.id));
+      addLog(`Deleted ${contactDisplayName(contact)} from shared contacts.`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to delete contact.";
+      setErrorMessage(message);
+      addLog(`Delete failed: ${message}`);
+    }
+  }
+
+  async function clearSavedContacts() {
+    if (
+      !confirm(
+        `Delete all ${contacts.length} shared contacts from the central database?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      for (const contact of contacts) {
+        await fetch(`/api/card-flow/contacts?id=${encodeURIComponent(contact.id)}`, {
+          method: "DELETE",
+        });
+      }
+      setContacts([]);
+      addLog("Cleared the shared contact database.");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to clear shared contacts.";
+      setErrorMessage(message);
+      addLog(`Clear failed: ${message}`);
+    }
+  }
+
   function isDraftSaved(draftContact: DraftContact) {
     return findDuplicateIndex(contacts, stripDraftMetadata(draftContact)) !== -1;
   }
@@ -792,17 +892,17 @@ export function CardFlowApp() {
               <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-[15px]">
                 Upload a batch of business card photos, let the app merge matching
                 fronts and backs, split multiple cards into separate contacts, and
-                keep each record ready for follow-up.
+                keep every saved record synced through one shared contacts database.
               </p>
               <div className="mt-4 flex flex-wrap gap-2 text-[11px] uppercase tracking-[0.18em] text-slate-400">
                 <span className="rounded-full border border-white/10 px-3 py-1">
-                  Multi-Photo Upload
+                  Mobile + Desktop
                 </span>
                 <span className="rounded-full border border-white/10 px-3 py-1">
-                  Multi-Card Detection
+                  Shared Contacts DB
                 </span>
                 <span className="rounded-full border border-white/10 px-3 py-1">
-                  Labeled Phone Numbers
+                  Multi-Card Extraction
                 </span>
               </div>
             </div>
@@ -814,7 +914,7 @@ export function CardFlowApp() {
                 onClick={() => setDbView((current) => !current)}
                 className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-slate-200 transition hover:border-lime-200/40 hover:text-lime-100"
               >
-                {dbView ? "Back to Capture" : `Saved Contacts (${contacts.length})`}
+                {dbView ? "Back to Capture" : `Shared Contacts (${contacts.length})`}
               </button>
             </div>
           </div>
@@ -862,9 +962,8 @@ export function CardFlowApp() {
                     />
                   </label>
                   <p className="mt-3 text-xs leading-6 text-slate-400">
-                    You can paste one card or a block of notes that contains several
-                    contacts. The extractor will split distinct people into separate
-                    records when it can identify them.
+                    You can paste one card or several contacts. The extractor splits
+                    distinct people into separate records when it can identify them.
                   </p>
                 </div>
               ) : (
@@ -874,7 +973,6 @@ export function CardFlowApp() {
                   onSelect={(files) => void handleImageSelect(files)}
                   onRemove={removeImage}
                   onClearAll={() => setImages([])}
-                  capture="environment"
                 />
               )}
 
@@ -943,13 +1041,14 @@ export function CardFlowApp() {
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400">
-                      Device Database
+                      Shared Contacts
                     </div>
                     <h2 className="mt-2 text-3xl text-white" style={headingStyle}>
-                      {contacts.length} saved contact{contacts.length === 1 ? "" : "s"}
+                      {contacts.length} shared contact{contacts.length === 1 ? "" : "s"}
                     </h2>
                     <p className="mt-2 text-sm text-slate-400">
-                      These stay in this browser on this device until you clear them or export them.
+                      These come from the shared contacts database, so desktop and
+                      phone load the same saved records.
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-3">
@@ -963,21 +1062,11 @@ export function CardFlowApp() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        if (
-                          !confirm(
-                            `Delete all ${contacts.length} saved contacts on this device?`
-                          )
-                        ) {
-                          return;
-                        }
-                        setContacts([]);
-                        addLog("Cleared the saved contact database.");
-                      }}
+                      onClick={() => void clearSavedContacts()}
                       disabled={!contacts.length}
                       className="rounded-full border border-rose-400/30 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-rose-100 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Clear Saved
+                      Clear Shared
                     </button>
                   </div>
                 </div>
@@ -1043,14 +1132,7 @@ export function CardFlowApp() {
                               <td className="px-4 py-4">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    setContacts((current) =>
-                                      current.filter((row) => row.id !== entry.id)
-                                    );
-                                    addLog(
-                                      `Deleted ${contactDisplayName(entry)} from saved contacts.`
-                                    );
-                                  }}
+                                  onClick={() => void deleteSavedContact(entry)}
                                   className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-400 transition hover:border-rose-400/30 hover:text-rose-100"
                                 >
                                   Delete
@@ -1066,10 +1148,10 @@ export function CardFlowApp() {
                   <div className="mt-6 rounded-[28px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-16 text-center">
                     <div className="text-4xl">🗂️</div>
                     <div className="mt-4 text-2xl text-white" style={headingStyle}>
-                      No saved contacts yet
+                      No shared contacts yet
                     </div>
                     <p className="mt-3 text-sm text-slate-400">
-                      Extract a set of cards and save the contacts you want to keep.
+                      Save a contact from any device and it will show up here everywhere.
                     </p>
                   </div>
                 )}
@@ -1082,9 +1164,8 @@ export function CardFlowApp() {
                     {manualMode ? "Paste one or more card details" : "Drop in a batch of card photos"}
                   </h2>
                   <p className="mt-4 text-sm leading-7 text-slate-300 sm:text-[15px]">
-                    One upload bucket now handles multiple photos at once. The extractor
-                    can merge repeated shots of the same card and split distinct cards
-                    into separate contacts for review.
+                    One upload bucket handles multiple photos at once, and saved
+                    contacts sync through a shared database so your phone and desktop stay aligned.
                   </p>
                 </div>
               </section>
@@ -1100,37 +1181,19 @@ export function CardFlowApp() {
                         {contactDisplayName(selectedDraft)}
                       </h2>
                       <p className="mt-2 text-sm text-slate-400">
-                        Review each detected card, save the clean contact record, and
-                        optionally generate a follow-up pack for the selected person.
+                        Review each detected card, save the clean contact record to the
+                        shared database, and optionally generate a follow-up pack.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap gap-3">
                       <button
                         type="button"
-                        onClick={saveCurrentContact}
+                        onClick={() => void saveCurrentContact()}
                         disabled={working}
                         className="rounded-full border border-white/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100 transition hover:border-lime-200/40 hover:text-lime-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         Save Contact
-                      </button>
-                      {draftContacts.length > 1 ? (
-                        <button
-                          type="button"
-                          onClick={saveAllDraftContacts}
-                          disabled={working}
-                          className="rounded-full border border-lime-200/30 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-lime-100 transition hover:border-lime-200/60 hover:bg-lime-300/10 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Save All ({draftContacts.length})
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => void exportDraftsToXlsx()}
-                        disabled={working || !draftContacts.length}
-                        className="rounded-full border border-cyan-200/30 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Export to XLSX
                       </button>
                       <button
                         type="button"
@@ -1145,8 +1208,26 @@ export function CardFlowApp() {
 
                   {draftContacts.length > 1 ? (
                     <div className="mt-5">
-                      <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
-                        Detected Contacts
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="text-[10px] uppercase tracking-[0.18em] text-slate-400">
+                          Detected Contacts
+                        </div>
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            onClick={() => void saveAllDraftContacts()}
+                            className="rounded-full border border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-slate-300 transition hover:border-lime-200/30 hover:text-lime-100"
+                          >
+                            Save All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void exportDraftsToXlsx()}
+                            className="rounded-full border border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-slate-300 transition hover:border-lime-200/30 hover:text-lime-100"
+                          >
+                            Export Batch
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {draftContacts.map((draftContact, index) => {

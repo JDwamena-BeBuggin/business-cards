@@ -1,0 +1,4 @@
+NEXTJS_ENV=development
+OPENAI_API_KEY=your-openai-api-key-here
+TURSO_DATABASE_URL=
+TURSO_AUTH_TOKEN=
