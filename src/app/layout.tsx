@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Residential Takeoff",
-  description: "AI-powered residential construction takeoff tool",
+  title: "Card Flow — Business Card Workflow",
+  description: "Capture business cards, extract contacts, and export to Excel.",
 };
 
 export default function RootLayout({
