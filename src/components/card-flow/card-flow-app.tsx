@@ -152,27 +152,61 @@ function buildVCard(contact: CardFlowContact): string {
   if (contact.address) lines.push(`ADR;type=WORK:;;${esc(contact.address)};;;;`);
   if (contact.notes) lines.push(`NOTE:${esc(contact.notes)}`);
   lines.push("END:VCARD");
-  return lines.join("\r\n");
+  return `${lines.join("\r\n")}\r\n`;
 }
 
-function downloadVCard(contact: CardFlowContact) {
-  const vcf = buildVCard(contact);
-  const blob = new Blob([vcf], { type: "text/vcard;charset=utf-8" });
+async function handoffVCardFile(contents: string, filename: string) {
+  const file = new File([contents], filename, {
+    type: "text/vcard;charset=utf-8",
+  });
+
+  if (
+    typeof navigator !== "undefined" &&
+    typeof navigator.share === "function" &&
+    (!("canShare" in navigator) || navigator.canShare({ files: [file] }))
+  ) {
+    try {
+      await navigator.share({
+        title: filename,
+        files: [file],
+      });
+      return "shared";
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return "cancelled";
+      }
+    }
+  }
+
+  const blob = new Blob([contents], { type: "text/vcard;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  const name = [contact.first_name, contact.last_name].filter(Boolean).join("_") || "contact";
-  link.download = `${name}.vcf`;
+  link.download = filename;
   link.click();
-  URL.revokeObjectURL(url);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return "downloaded";
 }
 
-function downloadVCardBatch(contacts: CardFlowContact[], filename = "card-flow-contacts") {
+async function downloadVCard(contact: CardFlowContact) {
+  const name = [contact.first_name, contact.last_name].filter(Boolean).join("_") || "contact";
+  return handoffVCardFile(buildVCard(contact), `${name}.vcf`);
+}
+
+async function downloadVCardBatch(
+  contacts: CardFlowContact[],
+  filename = "card-flow-contacts"
+) {
   const cards = contacts
     .map(hydrateContact)
     .filter((contact) =>
-      [contact.first_name, contact.last_name, contact.company, contact.email, formatPhoneSummary(contact)]
-        .some(Boolean)
+      [
+        contact.first_name,
+        contact.last_name,
+        contact.company,
+        contact.email,
+        formatPhoneSummary(contact),
+      ].some(Boolean)
     )
     .map(buildVCard);
 
@@ -180,14 +214,7 @@ function downloadVCardBatch(contacts: CardFlowContact[], filename = "card-flow-c
     return false;
   }
 
-  const blob = new Blob([cards.join("\r\n")], { type: "text/vcard;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${filename}.vcf`;
-  link.click();
-  URL.revokeObjectURL(url);
-  return true;
+  return handoffVCardFile(`${cards.join("\r\n")}\r\n`, `${filename}.vcf`);
 }
 
 function stripDraftMetadata(contact: DraftContact): CardFlowContact {
@@ -774,19 +801,25 @@ export function CardFlowApp() {
     }
   }
 
-  function saveDraftsToPhone() {
+  async function saveDraftsToPhone() {
     const toExport = draftContacts.map(stripDraftMetadata);
     if (!toExport.length) return;
 
-    const downloaded = downloadVCardBatch(
+    const result = await downloadVCardBatch(
       toExport,
       `card-flow-phone-import-${new Date().toISOString().split("T")[0]}`
     );
 
-    if (downloaded) {
+    if (result === "shared") {
+      addLog(
+        `Opened the iPhone share sheet with ${toExport.length} contact${toExport.length === 1 ? "" : "s"} in one vCard file.`
+      );
+    } else if (result === "downloaded") {
       addLog(
         `Downloaded ${toExport.length} contact${toExport.length === 1 ? "" : "s"} as one iPhone import file.`
       );
+    } else if (result === "cancelled") {
+      addLog("Phone export cancelled.");
     } else {
       setErrorMessage("No contact details were available to export to phone.");
       addLog("Phone export skipped because no usable contact details were found.");
@@ -912,18 +945,24 @@ export function CardFlowApp() {
     }
   }
 
-  function saveSharedContactsToPhone() {
+  async function saveSharedContactsToPhone() {
     if (!contacts.length) return;
 
-    const downloaded = downloadVCardBatch(
+    const result = await downloadVCardBatch(
       contacts,
       `shared-contacts-phone-import-${new Date().toISOString().split("T")[0]}`
     );
 
-    if (downloaded) {
+    if (result === "shared") {
+      addLog(
+        `Opened the iPhone share sheet with ${contacts.length} shared contact${contacts.length === 1 ? "" : "s"} in one vCard file.`
+      );
+    } else if (result === "downloaded") {
       addLog(
         `Downloaded ${contacts.length} shared contact${contacts.length === 1 ? "" : "s"} as one iPhone import file.`
       );
+    } else if (result === "cancelled") {
+      addLog("Shared phone export cancelled.");
     } else {
       setErrorMessage("No saved contacts were available to export to phone.");
       addLog("Shared phone export skipped because no usable contacts were found.");
@@ -1024,7 +1063,7 @@ export function CardFlowApp() {
                 {contacts.length > 0 ? (
                   <button
                     type="button"
-                    onClick={saveSharedContactsToPhone}
+                    onClick={() => void saveSharedContactsToPhone()}
                     className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15"
                     title="Downloads one .vcf file containing every saved contact for iPhone import"
                   >
@@ -1058,7 +1097,7 @@ export function CardFlowApp() {
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
-                  onClick={saveSharedContactsToPhone}
+                  onClick={() => void saveSharedContactsToPhone()}
                   className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15"
                 >
                   Save All Saved to iPhone
@@ -1251,7 +1290,7 @@ export function CardFlowApp() {
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="button"
-                      onClick={saveSharedContactsToPhone}
+                      onClick={() => void saveSharedContactsToPhone()}
                       disabled={!contacts.length}
                       className="rounded-full border border-white/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 disabled:cursor-not-allowed disabled:text-slate-500"
                       title="Downloads one .vcf file containing every saved contact for iPhone import"
@@ -1339,7 +1378,7 @@ export function CardFlowApp() {
                                 <div className="flex gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => downloadVCard(entry)}
+                                    onClick={() => void downloadVCard(entry)}
                                     className="rounded-full border border-white/10 px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-slate-400 transition hover:border-cyan-400/30 hover:text-cyan-100"
                                     title="Download .vcf to add to phone contacts"
                                   >
@@ -1413,7 +1452,7 @@ export function CardFlowApp() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => downloadVCard(stripDraftMetadata(selectedDraft))}
+                        onClick={() => void downloadVCard(stripDraftMetadata(selectedDraft))}
                         disabled={working}
                         className="rounded-full border border-white/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-100 transition hover:border-cyan-200/40 hover:text-cyan-100 disabled:cursor-not-allowed disabled:opacity-50"
                         title="Downloads a .vcf file — tap to add to iPhone Contacts"
@@ -1423,7 +1462,7 @@ export function CardFlowApp() {
                       {draftContacts.length > 1 ? (
                         <button
                           type="button"
-                          onClick={saveDraftsToPhone}
+                          onClick={() => void saveDraftsToPhone()}
                           disabled={working}
                           className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15 disabled:cursor-not-allowed disabled:opacity-50"
                           title="Downloads one .vcf file containing the full detected batch for iPhone import"
@@ -1458,7 +1497,7 @@ export function CardFlowApp() {
                           </button>
                           <button
                             type="button"
-                            onClick={saveDraftsToPhone}
+                            onClick={() => void saveDraftsToPhone()}
                             className="rounded-full border border-white/10 px-3 py-2 text-[11px] uppercase tracking-[0.16em] text-cyan-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
                             title="Downloads one .vcf file containing the full detected batch for iPhone import"
                           >
