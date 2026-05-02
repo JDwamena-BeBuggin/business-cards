@@ -8,6 +8,13 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "business-cards-contacts",
+      "database_id": "f5c43183-1cbf-4791-9a9b-704948737a06"
+    }
+  ],
   "observability": {
     "enabled": true
   },

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "opennextjs-cloudflare build",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "cf:build": "opennextjs-cloudflare build",
@@ -12,8 +12,6 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.3",
-    "@tursodatabase/serverless": "^1.1.3",
     "exceljs": "^4.4.0",
     "next": "16.2.4",
     "openai": "^6.33.0",
