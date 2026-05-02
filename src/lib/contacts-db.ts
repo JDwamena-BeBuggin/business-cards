@@ -19,6 +19,8 @@ type D1PreparedStatement = {
   all: () => Promise<{ results: Record<string, unknown>[] }>;
 };
 
+let schemaReady = false;
+
 function getD1(): D1Database | null {
   try {
     // getCloudflareContext is only available at runtime inside a Cloudflare Worker
@@ -32,33 +34,13 @@ function getD1(): D1Database | null {
 }
 
 async function ensureD1Schema(db: D1Database) {
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS contacts (
-      id TEXT PRIMARY KEY,
-      first_name TEXT NOT NULL DEFAULT '',
-      last_name TEXT NOT NULL DEFAULT '',
-      title TEXT NOT NULL DEFAULT '',
-      company TEXT NOT NULL DEFAULT '',
-      email TEXT NOT NULL DEFAULT '',
-      phone TEXT NOT NULL DEFAULT '',
-      cell_phone TEXT NOT NULL DEFAULT '',
-      office_phone TEXT NOT NULL DEFAULT '',
-      fax_phone TEXT NOT NULL DEFAULT '',
-      other_phone TEXT NOT NULL DEFAULT '',
-      website TEXT NOT NULL DEFAULT '',
-      linkedin TEXT NOT NULL DEFAULT '',
-      address TEXT NOT NULL DEFAULT '',
-      contact_type TEXT NOT NULL DEFAULT 'Other',
-      tags TEXT NOT NULL DEFAULT '[]',
-      source TEXT NOT NULL DEFAULT 'Business Card',
-      date_met TEXT NOT NULL DEFAULT '',
-      event TEXT NOT NULL DEFAULT '',
-      notes TEXT NOT NULL DEFAULT '',
-      follow_up_status TEXT NOT NULL DEFAULT 'Needed',
-      added_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+  if (schemaReady) return;
+  await db
+    .prepare(
+      "CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY, first_name TEXT NOT NULL DEFAULT '', last_name TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '', company TEXT NOT NULL DEFAULT '', email TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', cell_phone TEXT NOT NULL DEFAULT '', office_phone TEXT NOT NULL DEFAULT '', fax_phone TEXT NOT NULL DEFAULT '', other_phone TEXT NOT NULL DEFAULT '', website TEXT NOT NULL DEFAULT '', linkedin TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '', contact_type TEXT NOT NULL DEFAULT 'Other', tags TEXT NOT NULL DEFAULT '[]', source TEXT NOT NULL DEFAULT 'Business Card', date_met TEXT NOT NULL DEFAULT '', event TEXT NOT NULL DEFAULT '', notes TEXT NOT NULL DEFAULT '', follow_up_status TEXT NOT NULL DEFAULT 'Needed', added_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
     )
-  `);
+    .run();
+  schemaReady = true;
 }
 
 function rowToContact(row: Record<string, unknown>): StoredContactRecord {
