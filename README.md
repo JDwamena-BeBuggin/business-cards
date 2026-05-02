@@ -35,6 +35,8 @@ wrangler secret put EMAIL_FROM
 - New contacts can trigger an email notification with:
   - a summary of only the newly added contacts
   - the latest XLSX contacts database attached
+- The shared contacts screen also includes a manual `Email Shared Contacts` action.
+- Manual send uses the same latest XLSX attachment, but summarizes the current shared contacts set.
 - Duplicates or updates do not trigger the notification email.
 - `EMAIL_NOTIFICATION_TO`, `EMAIL_REPLY_TO`, and `EMAIL_FROM_NAME` are already wired as Worker vars.
 - `EMAIL_FROM` must be a verified sender address on a Cloudflare Email Service domain.

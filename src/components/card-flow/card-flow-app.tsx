@@ -54,6 +54,11 @@ type SaveContactsBatchResponse = {
   notification: NotificationInfo;
 };
 
+type ManualEmailResponse = {
+  contactsCount: number;
+  notification: NotificationInfo;
+};
+
 const OUTPUT_TABS: Array<{ id: OutputTab; label: string }> = [
   { id: "email", label: "Email" },
   { id: "linkedin", label: "LinkedIn" },
@@ -620,6 +625,7 @@ export function CardFlowApp() {
   const [activeTab, setActiveTab] = useState<OutputTab>("email");
   const [contacts, setContacts] = useState<StoredContact[]>([]);
   const [dbView, setDbView] = useState(false);
+  const [sendingManualEmail, setSendingManualEmail] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [log, setLog] = useState<string[]>([]);
 
@@ -1049,6 +1055,41 @@ export function CardFlowApp() {
     }
   }
 
+  async function sendSharedContactsEmail() {
+    if (!contacts.length || sendingManualEmail) return;
+
+    setSendingManualEmail(true);
+    setErrorMessage("");
+    addLog("Triggering the manual shared-contacts email…");
+
+    try {
+      const response = await postJson<ManualEmailResponse>(
+        "/api/card-flow/contacts/email",
+        {}
+      );
+
+      if (response.notification?.sent) {
+        addLog(
+          `Sent the manual shared-contacts email with ${response.contactsCount} contact${
+            response.contactsCount === 1 ? "" : "s"
+          }.`
+        );
+        return;
+      }
+
+      const reason = response.notification?.reason || "Manual email did not send.";
+      setErrorMessage(reason);
+      addLog(`Manual email skipped: ${reason}`);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to send the manual email.";
+      setErrorMessage(message);
+      addLog(`Manual email failed: ${message}`);
+    } finally {
+      setSendingManualEmail(false);
+    }
+  }
+
   async function deleteSavedContact(contact: StoredContact) {
     try {
       await fetch(`/api/card-flow/contacts?id=${encodeURIComponent(contact.id)}`, {
@@ -1141,14 +1182,25 @@ export function CardFlowApp() {
               <StatusPill phase={phase} hasError={Boolean(errorMessage)} />
               <div className="flex flex-wrap gap-2">
                 {contacts.length > 0 ? (
-                  <button
-                    type="button"
-                    onClick={() => void saveSharedContactsToPhone()}
-                    className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15"
-                    title="Downloads one .vcf file containing every saved contact for iPhone import"
-                  >
-                    Save All Saved to iPhone
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void saveSharedContactsToPhone()}
+                      className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-cyan-100 transition hover:border-cyan-200/60 hover:bg-cyan-300/15"
+                      title="Downloads one .vcf file containing every saved contact for iPhone import"
+                    >
+                      Save All Saved to iPhone
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void sendSharedContactsEmail()}
+                      disabled={sendingManualEmail}
+                      className="rounded-full border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-amber-100 transition hover:border-amber-200/60 hover:bg-amber-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Sends the shared contacts database summary and latest XLSX by email"
+                    >
+                      {sendingManualEmail ? "Sending Email…" : "Email Shared Contacts"}
+                    </button>
+                  </>
                 ) : null}
                 <button
                   type="button"
@@ -1376,6 +1428,15 @@ export function CardFlowApp() {
                       title="Downloads one .vcf file containing every saved contact for iPhone import"
                     >
                       Save All Shared to Phone
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void sendSharedContactsEmail()}
+                      disabled={!contacts.length || sendingManualEmail}
+                      className="rounded-full border border-amber-300/30 bg-amber-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.18em] text-amber-100 transition hover:border-amber-200/60 hover:bg-amber-300/15 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Sends the shared contacts database summary and latest XLSX by email"
+                    >
+                      {sendingManualEmail ? "Sending Email…" : "Email Shared Contacts"}
                     </button>
                     <button
                       type="button"

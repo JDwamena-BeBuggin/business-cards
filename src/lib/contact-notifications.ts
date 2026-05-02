@@ -20,7 +20,7 @@ type SendEmailBinding = {
   }) => Promise<{ messageId: string }>;
 };
 
-type NotificationResult =
+export type NotificationResult =
   | { sent: true; messageId: string }
   | { sent: false; reason: string };
 
@@ -133,10 +133,20 @@ function contactSummaryHtml(contact: StoredContactRecord) {
   </li>`;
 }
 
-export async function notifyNewContactsAdded(
-  newContacts: StoredContactRecord[]
-): Promise<NotificationResult> {
-  if (!newContacts.length) {
+type SendDigestOptions = {
+  contacts: StoredContactRecord[];
+  subject: string;
+  introText: string;
+  introHtml: string;
+};
+
+async function sendContactDigestEmail({
+  contacts,
+  subject,
+  introText,
+  introHtml,
+}: SendDigestOptions): Promise<NotificationResult> {
+  if (!contacts.length) {
     return { sent: false, reason: "No new contacts to notify." };
   }
 
@@ -157,14 +167,10 @@ export async function notifyNewContactsAdded(
   const workbook = await buildContactsWorkbookBuffer(allContacts);
   const filename = contactsExportFilename();
 
-  const subject = `Card Flow: ${newContacts.length} new contact${
-    newContacts.length === 1 ? "" : "s"
-  } added`;
-
   const text = [
-    `${newContacts.length} new contact${newContacts.length === 1 ? "" : "s"} were added to Card Flow.`,
+    introText,
     "",
-    ...newContacts.flatMap((contact, index) => [
+    ...contacts.flatMap((contact, index) => [
       `${index + 1}. ${contactSummaryText(contact)}`,
       "",
     ]),
@@ -173,14 +179,10 @@ export async function notifyNewContactsAdded(
 
   const html = `
     <div style="font-family:Arial,sans-serif;color:#0f172a;line-height:1.6">
-      <h2 style="margin:0 0 12px">Card Flow new contact notification</h2>
-      <p style="margin:0 0 16px">
-        ${newContacts.length} new contact${newContacts.length === 1 ? "" : "s"} ${
-          newContacts.length === 1 ? "was" : "were"
-        } added to the shared database.
-      </p>
+      <h2 style="margin:0 0 12px">${escapeHtml(subject)}</h2>
+      <p style="margin:0 0 16px">${introHtml}</p>
       <ol style="padding-left:18px;margin:0 0 20px">
-        ${newContacts.map(contactSummaryHtml).join("")}
+        ${contacts.map(contactSummaryHtml).join("")}
       </ol>
       <p style="margin:0">Attached: <strong>${escapeHtml(filename)}</strong></p>
     </div>
@@ -204,4 +206,48 @@ export async function notifyNewContactsAdded(
   });
 
   return { sent: true, messageId: response.messageId };
+}
+
+export async function notifyNewContactsAdded(
+  newContacts: StoredContactRecord[]
+): Promise<NotificationResult> {
+  if (!newContacts.length) {
+    return { sent: false, reason: "No new contacts to notify." };
+  }
+
+  const subject = `Card Flow: ${newContacts.length} new contact${
+    newContacts.length === 1 ? "" : "s"
+  } added`;
+
+  return sendContactDigestEmail({
+    contacts: newContacts,
+    subject,
+    introText: `${newContacts.length} new contact${
+      newContacts.length === 1 ? "" : "s"
+    } ${newContacts.length === 1 ? "was" : "were"} added to Card Flow.`,
+    introHtml: `${newContacts.length} new contact${
+      newContacts.length === 1 ? "" : "s"
+    } ${newContacts.length === 1 ? "was" : "were"} added to the shared database.`,
+  });
+}
+
+export async function sendManualContactsEmail(
+  contacts: StoredContactRecord[]
+): Promise<NotificationResult> {
+  if (!contacts.length) {
+    return { sent: false, reason: "No contacts were provided for manual email." };
+  }
+
+  const subject = `Card Flow: manual shared contacts update (${contacts.length})`;
+
+  return sendContactDigestEmail({
+    contacts,
+    subject,
+    introText: `Manual Card Flow email triggered for ${contacts.length} contact${
+      contacts.length === 1 ? "" : "s"
+    }.`,
+    introHtml: `This was a manual Card Flow email trigger for ${contacts.length} shared contact${
+      contacts.length === 1 ? "" : "s"
+    }.`,
+  });
 }
